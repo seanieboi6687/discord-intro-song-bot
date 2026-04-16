@@ -17,7 +17,7 @@ process.env.FFMPEG_PATH = ffmpeg;
 // SOUND MAP
 const userSounds = {
     "477577044893368333": "Tim.mp3",
-    "214595568549232642": "Calvin.mp3",
+    "210935946781130753": "Calvin.mp3",
     "239205332470071298": "David.mp3"
 };
 
