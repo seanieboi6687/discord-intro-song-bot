@@ -31,7 +31,7 @@ const client = new Client({
     ]
 });
 
-// 🧠 STATE PER GUILD
+// STATE PER GUILD
 const state = new Map();
 
 client.once('clientReady', () => {
@@ -49,7 +49,7 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
             // ❌ ignore users without sound mapping
             if (!soundFile) return;
 
-            // 🧠 get or create guild state
+            // get or create guild state
             let guild = state.get(guildId);
 
             if (!guild) {
@@ -69,7 +69,7 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
                 state.set(guildId, guild);
             }
 
-            // ⚡ INTERRUPT ANY CURRENT AUDIO
+            // INTERRUPT ANY CURRENT AUDIO
             if (guild.player) {
                 try {
                     guild.player.stop(true);
@@ -99,7 +99,7 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
                 } catch {}
             });
 
-            // ❌ ERROR HANDLING
+            // ERROR HANDLING
             player.on('error', () => {
                 try {
                     guild.player = null;
