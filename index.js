@@ -1,14 +1,11 @@
 require('dotenv').config();
 
-process.env.DISCORD_VOICE_DISABLE_IP_DISCOVERY = "true";
-
 const { Client, GatewayIntentBits } = require('discord.js');
 const {
     joinVoiceChannel,
     createAudioPlayer,
     createAudioResource,
-    AudioPlayerStatus,
-    VoiceConnectionStatus
+    AudioPlayerStatus
 } = require('@discordjs/voice');
 
 const path = require('path');
@@ -16,7 +13,7 @@ const ffmpeg = require('ffmpeg-static');
 
 process.env.FFMPEG_PATH = ffmpeg;
 
-// 🎵 SOUND MAP
+// 🎵 USER SOUND MAP
 const userSounds = {
     "477577044893368333": "Tim.mp3",
     "210935568549232642": "Calvin.mp3",
@@ -34,38 +31,8 @@ const client = new Client({
     ]
 });
 
-// 🧠 STATE TRACKING
-const activeConnections = new Map();
-const activePlayers = new Map();
-const destroyedConnections = new Set();
-
-// 🧼 SAFE DESTROY (NO DOUBLE CRASH)
-function safeDestroy(connection, guildId) {
-    if (!connection || destroyedConnections.has(guildId)) return;
-
-    destroyedConnections.add(guildId);
-
-    try {
-        connection.destroy();
-    } catch {}
-
-    activeConnections.delete(guildId);
-    activePlayers.delete(guildId);
-
-    setTimeout(() => destroyedConnections.delete(guildId), 5000);
-}
-
-// 🛑 GLOBAL ERROR SAFETY (IMPORTANT FOR RAILWAY)
-process.on('uncaughtException', (err) => {
-    console.error("UNCAUGHT:", err);
-});
-
-process.on('unhandledRejection', (err) => {
-    console.error("PROMISE ERROR:", err);
-});
-
-// 🚀 LOGIN (NO DELAY NEEDED NOW)
-client.login(TOKEN);
+// 🧠 STATE PER GUILD
+const state = new Map();
 
 client.once('clientReady', () => {
     console.log(`Logged in as ${client.user.tag}`);
@@ -73,28 +40,20 @@ client.once('clientReady', () => {
 
 client.on('voiceStateUpdate', async (oldState, newState) => {
     try {
-
-        // ONLY JOIN EVENTS
         if (!oldState.channelId && newState.channelId) {
 
             const guildId = newState.guild.id;
             const userId = newState.member.id;
             const soundFile = userSounds[userId];
 
+            // ❌ ignore users without sound mapping
             if (!soundFile) return;
 
-            // ⚡ INTERRUPT CURRENT AUDIO
-            if (activePlayers.has(guildId)) {
-                try {
-                    activePlayers.get(guildId).stop(true);
-                } catch {}
-            }
+            // 🧠 get or create guild state
+            let guild = state.get(guildId);
 
-            // 🔗 GET OR CREATE CONNECTION (NO entersState!)
-            let connection = activeConnections.get(guildId);
-
-            if (!connection) {
-                connection = joinVoiceChannel({
+            if (!guild) {
+                const connection = joinVoiceChannel({
                     channelId: newState.channel.id,
                     guildId,
                     adapterCreator: newState.guild.voiceAdapterCreator,
@@ -102,49 +61,54 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
                     selfMute: false
                 });
 
-                activeConnections.set(guildId, connection);
+                guild = {
+                    connection,
+                    player: null
+                };
 
-                // NON-BLOCKING READY HANDLER
-                connection.on(VoiceConnectionStatus.Ready, () => {
-                    console.log("Voice connection ready");
-                });
-
-                connection.on('error', (err) => {
-                    console.error("Voice connection error:", err);
-                    safeDestroy(connection, guildId);
-                });
+                state.set(guildId, guild);
             }
 
-            // 🎧 CREATE PLAYER
+            // ⚡ INTERRUPT ANY CURRENT AUDIO
+            if (guild.player) {
+                try {
+                    guild.player.stop(true);
+                } catch {}
+            }
+
+            // 🎧 CREATE NEW PLAYER
             const player = createAudioPlayer({
                 behaviors: {
                     noSubscriber: 'play'
                 }
             });
 
-            activePlayers.set(guildId, player);
+            guild.player = player;
 
             const resource = createAudioResource(
                 path.join(__dirname, 'sounds', soundFile)
             );
 
             player.play(resource);
-            connection.subscribe(player);
+            guild.connection.subscribe(player);
 
-            // 🧼 CLEANUP AFTER PLAYBACK
+            // 🧼 CLEANUP AFTER FINISH
             player.on(AudioPlayerStatus.Idle, () => {
-                setTimeout(() => {
-                    safeDestroy(connection, guildId);
-                }, 1000);
+                try {
+                    guild.player = null;
+                } catch {}
             });
 
             // ❌ ERROR HANDLING
             player.on('error', () => {
-                safeDestroy(connection, guildId);
+                try {
+                    guild.player = null;
+                } catch {}
             });
         }
-
     } catch (err) {
-        console.error("VOICE ERROR:", err);
+        console.error(err);
     }
 });
+
+client.login(TOKEN);
