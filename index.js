@@ -8,8 +8,7 @@ const {
     createAudioPlayer,
     createAudioResource,
     AudioPlayerStatus,
-    VoiceConnectionStatus,
-    entersState
+    VoiceConnectionStatus
 } = require('@discordjs/voice');
 
 const path = require('path');
@@ -35,12 +34,12 @@ const client = new Client({
     ]
 });
 
-// 🧠 STATE
+// 🧠 STATE TRACKING
 const activeConnections = new Map();
 const activePlayers = new Map();
 const destroyedConnections = new Set();
 
-// 🧼 SAFE DESTROY (CRASH PROTECTION)
+// 🧼 SAFE DESTROY (NO DOUBLE CRASH)
 function safeDestroy(connection, guildId) {
     if (!connection || destroyedConnections.has(guildId)) return;
 
@@ -56,7 +55,7 @@ function safeDestroy(connection, guildId) {
     setTimeout(() => destroyedConnections.delete(guildId), 5000);
 }
 
-// 🛑 GLOBAL SAFETY NET
+// 🛑 GLOBAL ERROR SAFETY (IMPORTANT FOR RAILWAY)
 process.on('uncaughtException', (err) => {
     console.error("UNCAUGHT:", err);
 });
@@ -65,10 +64,8 @@ process.on('unhandledRejection', (err) => {
     console.error("PROMISE ERROR:", err);
 });
 
-// 🚀 LOGIN SAFELY (delayed to avoid Railway startup race)
-setTimeout(() => {
-    client.login(TOKEN);
-}, 3000);
+// 🚀 LOGIN (NO DELAY NEEDED NOW)
+client.login(TOKEN);
 
 client.once('clientReady', () => {
     console.log(`Logged in as ${client.user.tag}`);
@@ -76,6 +73,8 @@ client.once('clientReady', () => {
 
 client.on('voiceStateUpdate', async (oldState, newState) => {
     try {
+
+        // ONLY JOIN EVENTS
         if (!oldState.channelId && newState.channelId) {
 
             const guildId = newState.guild.id;
@@ -84,14 +83,14 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
 
             if (!soundFile) return;
 
-            // ⚡ INTERRUPT CURRENT SOUND
+            // ⚡ INTERRUPT CURRENT AUDIO
             if (activePlayers.has(guildId)) {
                 try {
                     activePlayers.get(guildId).stop(true);
                 } catch {}
             }
 
-            // 🔗 GET OR CREATE CONNECTION
+            // 🔗 GET OR CREATE CONNECTION (NO entersState!)
             let connection = activeConnections.get(guildId);
 
             if (!connection) {
@@ -100,17 +99,20 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
                     guildId,
                     adapterCreator: newState.guild.voiceAdapterCreator,
                     selfDeaf: false,
-                    selfMute: false,
-                    debug: false
+                    selfMute: false
                 });
 
                 activeConnections.set(guildId, connection);
 
-                await entersState(connection, VoiceConnectionStatus.Ready, 15000)
-                    .catch(() => {
-                        safeDestroy(connection, guildId);
-                        return;
-                    });
+                // NON-BLOCKING READY HANDLER
+                connection.on(VoiceConnectionStatus.Ready, () => {
+                    console.log("Voice connection ready");
+                });
+
+                connection.on('error', (err) => {
+                    console.error("Voice connection error:", err);
+                    safeDestroy(connection, guildId);
+                });
             }
 
             // 🎧 CREATE PLAYER
@@ -129,7 +131,7 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
             player.play(resource);
             connection.subscribe(player);
 
-            // 🧼 CLEANUP ON END
+            // 🧼 CLEANUP AFTER PLAYBACK
             player.on(AudioPlayerStatus.Idle, () => {
                 setTimeout(() => {
                     safeDestroy(connection, guildId);
@@ -140,11 +142,8 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
             player.on('error', () => {
                 safeDestroy(connection, guildId);
             });
-
-            connection.on('error', () => {
-                safeDestroy(connection, guildId);
-            });
         }
+
     } catch (err) {
         console.error("VOICE ERROR:", err);
     }
