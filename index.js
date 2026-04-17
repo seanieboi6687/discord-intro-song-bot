@@ -31,25 +31,31 @@ const client = new Client({
     ]
 });
 
-// STATE PER GUILD
+// 🧠 STATE STORAGE PER GUILD
 const state = new Map();
 
+/* ----------------------------------------
+   READY
+---------------------------------------- */
 client.once('clientReady', () => {
     console.log(`Logged in as ${client.user.tag}`);
 });
 
+/* ----------------------------------------
+   VOICE EVENTS (JOIN TRIGGER SOUND)
+---------------------------------------- */
 client.on('voiceStateUpdate', async (oldState, newState) => {
     try {
+        // Only care about joins
         if (!oldState.channelId && newState.channelId) {
 
             const guildId = newState.guild.id;
             const userId = newState.member.id;
             const soundFile = userSounds[userId];
 
-            // ❌ ignore users without sound mapping
             if (!soundFile) return;
 
-            // get or create guild state
+            // Get or create guild state
             let guild = state.get(guildId);
 
             if (!guild) {
@@ -63,20 +69,21 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
 
                 guild = {
                     connection,
-                    player: null
+                    player: null,
+                    channelId: newState.channel.id
                 };
 
                 state.set(guildId, guild);
             }
 
-            // INTERRUPT ANY CURRENT AUDIO
+            // ⚡ INTERRUPT CURRENT AUDIO
             if (guild.player) {
                 try {
                     guild.player.stop(true);
                 } catch {}
             }
 
-            // 🎧 CREATE NEW PLAYER
+            // 🎧 NEW PLAYER
             const player = createAudioPlayer({
                 behaviors: {
                     noSubscriber: 'play'
@@ -92,18 +99,13 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
             player.play(resource);
             guild.connection.subscribe(player);
 
-            // 🧼 CLEANUP AFTER FINISH
+            // 🧼 CLEANUP AFTER PLAYBACK
             player.on(AudioPlayerStatus.Idle, () => {
-                try {
-                    guild.player = null;
-                } catch {}
+                guild.player = null;
             });
 
-            // ERROR HANDLING
             player.on('error', () => {
-                try {
-                    guild.player = null;
-                } catch {}
+                guild.player = null;
             });
         }
     } catch (err) {
@@ -111,4 +113,36 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
     }
 });
 
+/* ----------------------------------------
+   AUTO-LEAVE WHEN VC IS EMPTY
+---------------------------------------- */
+client.on('voiceStateUpdate', async (oldState, newState) => {
+    try {
+        const guildId = newState.guild.id;
+        const guild = state.get(guildId);
+
+        if (!guild?.connection) return;
+
+        const channel = newState.guild.channels.cache.get(guild.channelId);
+        if (!channel) return;
+
+        // Count NON-BOT users
+        const humanCount = channel.members.filter(m => !m.user.bot).size;
+
+        if (humanCount === 0) {
+            try {
+                guild.connection.destroy();
+                state.delete(guildId);
+                console.log("VC empty → bot left");
+            } catch {}
+        }
+
+    } catch (err) {
+        console.error(err);
+    }
+});
+
+/* ----------------------------------------
+   LOGIN
+---------------------------------------- */
 client.login(TOKEN);
