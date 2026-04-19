@@ -144,7 +144,4 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
     }
 });
 
-/* ----------------------------------------
-   LOGIN
----------------------------------------- */
 client.login(TOKEN);
