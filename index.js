@@ -13,7 +13,7 @@ const ffmpeg = require('ffmpeg-static');
 
 process.env.FFMPEG_PATH = ffmpeg;
 
-// 🎵 USER SOUND MAP
+// USER SOUND MAP
 const userSounds = {
     "477577044893368333": "Tim.mp3",
     "210935568549232642": "Calvin.mp3",
@@ -33,7 +33,7 @@ const client = new Client({
     ]
 });
 
-// 🧠 STATE STORAGE PER GUILD
+// STATE STORAGE PER GUILD
 const state = new Map();
 
 /* ----------------------------------------
@@ -78,14 +78,14 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
                 state.set(guildId, guild);
             }
 
-            // ⚡ INTERRUPT CURRENT AUDIO
+            // INTERRUPT CURRENT AUDIO
             if (guild.player) {
                 try {
                     guild.player.stop(true);
                 } catch {}
             }
 
-            // 🎧 NEW PLAYER
+            // NEW PLAYER
             const player = createAudioPlayer({
                 behaviors: {
                     noSubscriber: 'play'
@@ -101,7 +101,7 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
             player.play(resource);
             guild.connection.subscribe(player);
 
-            // 🧼 CLEANUP AFTER PLAYBACK
+            // CLEANUP AFTER PLAYBACK
             player.on(AudioPlayerStatus.Idle, () => {
                 guild.player = null;
             });
