@@ -128,7 +128,7 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
         const channel = newState.guild.channels.cache.get(guild.channelId);
         if (!channel) return;
 
-        // Count NON-BOT users
+
         const humanCount = channel.members.filter(m => !m.user.bot).size;
 
         if (humanCount === 0) {
